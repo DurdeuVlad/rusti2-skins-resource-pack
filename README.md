@@ -6,8 +6,24 @@ Pack contents live in `pack/` (see `pack/README.md` for how to add skins/sounds)
 ## Build
 
 ```bash
-python build.py   # -> dist/Rusti_2_Skins_Resource_Pack.zip + prints sha1
+python build.py 1.0.0   # -> dist/...-v1.0.0.zip + unversioned copy, prints sha1
 ```
+
+## Release (versioned + static link)
+
+```bash
+git tag v1.0.1 && git push origin v1.0.1
+```
+
+The `release` workflow builds the pack and publishes a GitHub release with two
+assets and the sha1 in the release notes:
+
+- Versioned (pinned, never changes): `https://github.com/OWNER/REPO/releases/download/v1.0.1/Rusti_2_Skins_Resource_Pack-v1.0.1.zip`
+- Static (always the newest release): `https://github.com/OWNER/REPO/releases/latest/download/Rusti_2_Skins_Resource_Pack.zip`
+
+Use the static link as `resource-pack=` in prod; the sha1 still has to be
+updated from the release notes on each new version. For a pinned server use the
+versioned link.
 
 ## Deploy to prod
 
