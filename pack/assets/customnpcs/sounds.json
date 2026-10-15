@@ -1,0 +1,29 @@
+{
+  "custom.npc.greeting": {
+    "subtitle": "subtitles.customnpcs.custom.npc.greeting",
+    "sounds": [
+      {
+        "name": "customnpcs:custom/voice/greeting_01",
+        "stream": false
+      }
+    ]
+  },
+  "custom.ambient.tavern": {
+    "subtitle": "subtitles.customnpcs.custom.ambient.tavern",
+    "sounds": [
+      {
+        "name": "customnpcs:custom/ambient/tavern_loop",
+        "stream": true
+      }
+    ]
+  },
+  "custom.sfx.quest_complete": {
+    "subtitle": "subtitles.customnpcs.custom.sfx.quest_complete",
+    "sounds": [
+      {
+        "name": "customnpcs:custom/sfx/quest_complete",
+        "stream": false
+      }
+    ]
+  }
+}
