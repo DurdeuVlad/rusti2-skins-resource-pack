@@ -7,11 +7,15 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - run: python3 build.py "${GITHUB_REF_NAME}" | tee build.txt
+      - id: sha
+        run: echo "sha=$(grep -o 'sha1=.*' build.txt | cut -d= -f2)" >> "$GITHUB_OUTPUT"
       - env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -49,3 +53,23 @@ jobs:
           NOTES
           } > notes.md
           gh release create "$TAG" dist/*.zip --title "$TAG" --notes-file notes.md
+
+  # Opt-in: set repo variable DEPLOY_ENABLED=true. The `production` environment should have
+  # required reviewers, so every deploy waits for a manual approval. Never restarts the server.
+  deploy:
+    needs: release
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install paramiko
+      - env:
+          SFTP_HOST: ${{ secrets.SFTP_HOST }}
+          SFTP_PORT: ${{ secrets.SFTP_PORT }}
+          SFTP_USER: ${{ secrets.SFTP_USER }}
+          SFTP_PASSWORD: ${{ secrets.SFTP_PASSWORD }}
+          SFTP_KEY: ${{ secrets.SFTP_KEY }}
+          SFTP_PATH: ${{ secrets.SFTP_PATH }}
+          SFTP_HOST_KEY: ${{ secrets.SFTP_HOST_KEY }}
+        run: python3 deploy_sftp.py --sha "${{ needs.release.outputs.sha }}"

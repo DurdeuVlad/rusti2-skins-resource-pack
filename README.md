@@ -36,6 +36,19 @@ Then restart the server. Planned: a workflow step that runs this against prod
 (needs FileBrowser URL/credentials as repo secrets), and/or bundling the pack in
 the client modpack so joins skip the full resource reload.
 
+## Automatic deploy over SFTP (opt-in)
+
+After a release, the `deploy` job patches only the resource-pack keys of prod's
+`server.properties` over SFTP (backup `server.properties.bak-<time>` first, atomic
+rename). It **never restarts** the server; restart it yourself to apply.
+
+Enable: repo secrets `SFTP_HOST`, `SFTP_PORT` (optional), `SFTP_USER`, `SFTP_PASSWORD`
+or `SFTP_KEY`, `SFTP_PATH` (remote path of server.properties), `SFTP_HOST_KEY`
+(`ssh-keyscan -t ed25519 host` -> `ssh-ed25519 AAAA...`; unknown hosts are rejected).
+Create an environment `production` with required reviewers (approval gate), then set
+the repo variable `DEPLOY_ENABLED=true`. Tested against a throwaway SFTP server:
+`pip install paramiko && python test_deploy.py`.
+
 ## Deploy to prod
 
 1. Upload `dist/Rusti_2_Skins_Resource_Pack.zip` to a direct-download HTTPS URL
