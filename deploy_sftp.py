@@ -8,6 +8,12 @@ import argparse, difflib, io, os, sys, time
 import paramiko
 from server_props import build_props, patch_text
 
+def load_key(text):
+    for cls in (paramiko.Ed25519Key, paramiko.RSAKey, paramiko.ECDSAKey):
+        try: return cls.from_private_key(io.StringIO(text))
+        except paramiko.SSHException: pass
+    raise ValueError("SFTP_KEY is not an unencrypted ed25519/rsa/ecdsa private key")
+
 def connect(env):
     c = paramiko.SSHClient()
     c.set_missing_host_key_policy(paramiko.RejectPolicy())
@@ -15,9 +21,7 @@ def connect(env):
     port = int(env.get("SFTP_PORT", 22))
     host = env["SFTP_HOST"] if port == 22 else f"[{env['SFTP_HOST']}]:{port}"
     c.get_host_keys().add(host, kt, paramiko.PKey.from_type_string(kt, __import__("base64").b64decode(kd)))
-    key = None
-    if env.get("SFTP_KEY"):
-        key = paramiko.PKey.from_private_key(io.StringIO(env["SFTP_KEY"]))
+    key = load_key(env["SFTP_KEY"]) if env.get("SFTP_KEY") else None
     c.connect(env["SFTP_HOST"], port, env["SFTP_USER"], password=env.get("SFTP_PASSWORD"), pkey=key,
               look_for_keys=False, allow_agent=False, timeout=20)
     return c

@@ -18,9 +18,11 @@ class FS(SFTPServerInterface):
     lstat = stat
     def posix_rename(s, a, b): os.replace(s._p(a), s._p(b)); return SFTP_OK
     def list_folder(s, p): return [SFTPAttributes.from_stat(os.stat(os.path.join(s._p(p), n)), n) for n in os.listdir(s._p(p))]
+CK = paramiko.RSAKey.generate(2048)
 class Auth(ServerInterface):
     def check_auth_password(s, u, p): return AUTH_SUCCESSFUL if (u, p) == ("deploy", "pw") else AUTH_FAILED
-    def get_allowed_auths(s, u): return "password"
+    def check_auth_publickey(s, u, k): return AUTH_SUCCESSFUL if (u, k) == ("deploy", CK) else AUTH_FAILED
+    def get_allowed_auths(s, u): return "password,publickey"
     def check_channel_request(s, k, c): return OPEN_SUCCEEDED
 
 hk = paramiko.RSAKey.generate(2048)
@@ -38,6 +40,8 @@ open(os.path.join(ROOT, "server.properties"), "w").write(PROPS)
 good = dict(SFTP_HOST="127.0.0.1", SFTP_PORT=str(PORT), SFTP_USER="deploy", SFTP_PASSWORD="pw",
             SFTP_PATH="/server.properties", SFTP_HOST_KEY=f"{hk.get_name()} {hk.get_base64()}")
 SHA = "a" * 40
+import io; buf = io.StringIO(); CK.write_private_key(buf)
+keyenv = {k: v for k, v in good.items() if k != "SFTP_PASSWORD"} | {"SFTP_KEY": buf.getvalue()}
 
 assert deploy_sftp.deploy(good, SHA, dry_run=True)
 assert open(os.path.join(ROOT, "server.properties")).read() == PROPS, "dry run wrote"
@@ -47,8 +51,12 @@ assert f"resource-pack-sha1={SHA}" in out and "download/v9.9.9/" in out and "req
 assert "rcon.password=SECRET" in out and "motd=x" in out and "white-list=true" in out
 assert any(f.startswith("server.properties.bak-") for f in os.listdir(ROOT)) and not os.path.exists(os.path.join(ROOT, "server.properties.tmp"))
 assert deploy_sftp.deploy(good, SHA, "v9.9.9") is False  # idempotent
+assert deploy_sftp.deploy(keyenv, SHA, "v9.9.9") is False  # key auth works
+def other_key():
+    b = io.StringIO(); paramiko.RSAKey.generate(2048).write_private_key(b); return b.getvalue()
 for bad, why in [({**good, "SFTP_PASSWORD": "nope"}, "bad password"),
-                 ({**good, "SFTP_HOST_KEY": f"{hk.get_name()} {paramiko.RSAKey.generate(2048).get_base64()}"}, "wrong host key")]:
+                 ({**good, "SFTP_HOST_KEY": f"{hk.get_name()} {paramiko.RSAKey.generate(2048).get_base64()}"}, "wrong host key"),
+                 ({**keyenv, "SFTP_KEY": other_key()}, "wrong key")]:
     try: deploy_sftp.deploy(bad, SHA); raise SystemExit(f"FAIL: accepted {why}")
     except (paramiko.AuthenticationException, paramiko.SSHException): pass
 print("ALL OK")
