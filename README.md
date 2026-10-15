@@ -25,6 +25,17 @@ Use the static link as `resource-pack=` in prod; the sha1 still has to be
 updated from the release notes on each new version. For a pinned server use the
 versioned link.
 
+## Update prod after a release
+
+```bash
+python server_props.py                    # print the lines for the latest release
+python server_props.py server.properties  # or patch a copy in place, then upload it
+```
+
+Then restart the server. Planned: a workflow step that runs this against prod
+(needs FileBrowser URL/credentials as repo secrets), and/or bundling the pack in
+the client modpack so joins skip the full resource reload.
+
 ## Deploy to prod
 
 1. Upload `dist/Rusti_2_Skins_Resource_Pack.zip` to a direct-download HTTPS URL
