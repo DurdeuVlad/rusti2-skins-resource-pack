@@ -16,7 +16,14 @@ class FS(SFTPServerInterface):
         return H(open(s._p(path), m), flags)
     def stat(s, p): return SFTPAttributes.from_stat(os.stat(s._p(p)), p)
     lstat = stat
-    def posix_rename(s, a, b): os.replace(s._p(a), s._p(b)); return SFTP_OK
+    MODE = "posix"  # posix | wings (no posix_rename) | strict (no posix_rename, rename refuses existing target)
+    def posix_rename(s, a, b):
+        if FS.MODE != "posix": return paramiko.SFTP_OP_UNSUPPORTED
+        os.replace(s._p(a), s._p(b)); return SFTP_OK
+    def rename(s, a, b):
+        if FS.MODE == "strict" and os.path.exists(s._p(b)): return paramiko.SFTP_FAILURE
+        os.replace(s._p(a), s._p(b)); return SFTP_OK
+    def remove(s, p): os.remove(s._p(p)); return SFTP_OK
     def list_folder(s, p): return [SFTPAttributes.from_stat(os.stat(os.path.join(s._p(p), n)), n) for n in os.listdir(s._p(p))]
 CK = paramiko.RSAKey.generate(2048)
 class Auth(ServerInterface):
@@ -51,6 +58,11 @@ assert f"resource-pack-sha1={SHA}" in out and "download/v9.9.9/" in out and "req
 assert "rcon.password=SECRET" in out and "motd=x" in out and "white-list=true" in out
 assert any(f.startswith("server.properties.bak-") for f in os.listdir(ROOT)) and not os.path.exists(os.path.join(ROOT, "server.properties.tmp"))
 assert deploy_sftp.deploy(good, SHA, "v9.9.9") is False  # idempotent
+for mode in ("wings", "strict"):  # servers without posix_rename (e.g. Pterodactyl Wings)
+    FS.MODE = mode; open(os.path.join(ROOT, "server.properties"), "w").write(PROPS)
+    assert deploy_sftp.deploy(good, SHA, mode) and f"download/{mode}/" in open(os.path.join(ROOT, "server.properties")).read(), mode
+    assert not os.path.exists(os.path.join(ROOT, "server.properties.tmp"))
+FS.MODE = "posix"; assert deploy_sftp.deploy(good, SHA, "v9.9.9")
 assert deploy_sftp.deploy(keyenv, SHA, "v9.9.9") is False  # key auth works
 def other_key():
     b = io.StringIO(); paramiko.RSAKey.generate(2048).write_private_key(b); return b.getvalue()

@@ -26,19 +26,27 @@ def connect(env):
               look_for_keys=False, allow_agent=False, timeout=20)
     return c
 
+def swap(sftp, tmp, dst):
+    """Atomic posix_rename where supported; Pterodactyl Wings lacks it, so fall back to
+    rename, then remove+rename for strict SFTPv3 servers (backup already written)."""
+    for op in (sftp.posix_rename, sftp.rename):
+        try: return op(tmp, dst)
+        except OSError: pass
+    sftp.remove(dst); sftp.rename(tmp, dst)
+
 def deploy(env, sha, tag=None, dry_run=False):
     c = connect(env); sftp = c.open_sftp(); path = env["SFTP_PATH"]
     try:
-        old = sftp.open(path).read().decode("utf-8")
+        with sftp.open(path) as f: old = f.read().decode("utf-8")
         new = patch_text(old, build_props(sha, tag))
         keys = ("resource-pack", "require-resource-pack")  # print only our keys; file holds secrets
         shown = [l for l in difflib.unified_diff(old.splitlines(), new.splitlines(), lineterm="", n=0)
                  if l[:1] in "+-" and l[1:].startswith(keys)]
         print("\n".join(shown) or "no changes")
         if dry_run or new == old: return old != new
-        sftp.open(f"{path}.bak-{time.strftime('%Y%m%d-%H%M%S')}", "w").write(old.encode())
-        sftp.open(f"{path}.tmp", "w").write(new.encode())
-        sftp.posix_rename(f"{path}.tmp", path)  # atomic swap; no half-written file
+        for dest, data in ((f"{path}.bak-{time.strftime('%Y%m%d-%H%M%S')}", old), (f"{path}.tmp", new)):
+            with sftp.open(dest, "w") as f: f.write(data.encode())  # close() must finish before rename
+        swap(sftp, f"{path}.tmp", path)
         return True
     finally:
         c.close()

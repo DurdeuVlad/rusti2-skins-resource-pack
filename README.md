@@ -45,9 +45,13 @@ rename). It **never restarts** the server; restart it yourself to apply.
 Enable: repo secrets `SFTP_HOST`, `SFTP_PORT` (optional), `SFTP_USER`, `SFTP_PASSWORD`
 or `SFTP_KEY`, `SFTP_PATH` (remote path of server.properties), `SFTP_HOST_KEY`
 (`ssh-keyscan -t ed25519 host` -> `ssh-ed25519 AAAA...`; unknown hosts are rejected).
+Pterodactyl/Wings: host = the node's FQDN, port 2022, user `<panel-user>.<server-id>`
+(panel password), `SFTP_PATH=/server.properties` (the SFTP root is the server folder),
+`SFTP_HOST_KEY` = the `public_key=` line Wings logs at startup. Each deploy leaves a
+`server.properties.bak-<time>` file; delete old ones occasionally.
 Create an environment `production` with required reviewers (approval gate), then set
-the repo variable `DEPLOY_ENABLED=true`. Tested against a throwaway SFTP server:
-`pip install paramiko && python test_deploy.py`.
+the repo variable `DEPLOY_ENABLED=true`. Tested against a throwaway Python SFTP server
+(`pip install paramiko && python test_deploy.py`) and a throwaway Pterodactyl panel + Wings in Docker.
 
 ## Deploy to prod
 
