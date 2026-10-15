@@ -72,3 +72,46 @@ for bad, why in [({**good, "SFTP_PASSWORD": "nope"}, "bad password"),
     try: deploy_sftp.deploy(bad, SHA); raise SystemExit(f"FAIL: accepted {why}")
     except (paramiko.AuthenticationException, paramiko.SSHException): pass
 print("ALL OK")
+
+# --- blast-radius proof: canary tree + every SFTP call the client makes -------------------
+import hashlib
+def snap():
+    out = {}
+    for d, _, fs in os.walk(ROOT):
+        for f in fs:
+            p = os.path.join(d, f); out[os.path.relpath(p, ROOT).replace(os.sep, "/")] = hashlib.sha1(open(p, "rb").read()).hexdigest()
+    return out
+CANARIES = ["world/level.dat", "world/region/r.0.0.mca", "plugins/keep.jar", "logs/latest.log", "server.jar",
+            "server.properties.bak-old", "server.properties.tmp.keep", "other.properties", "mods/a/b/c.txt"]
+for c in CANARIES:
+    os.makedirs(os.path.dirname(os.path.join(ROOT, c)) or ROOT, exist_ok=True)
+    open(os.path.join(ROOT, c), "wb").write(os.urandom(64))
+ops = []
+for name in ("remove", "rmdir", "rename", "posix_rename", "mkdir", "symlink", "chmod", "chown", "truncate", "utime", "unlink", "listdir", "listdir_attr"):
+    def spy(self, *a, _n=name, _o=getattr(paramiko.SFTPClient, name), **k): ops.append((_n, a)); return _o(self, *a, **k)
+    setattr(paramiko.SFTPClient, name, spy)
+_open = paramiko.SFTPClient.open
+def spy_open(self, path, mode="r", *a, **k):
+    if mode != "r": ops.append(("open-" + mode, (path,)))
+    return _open(self, path, mode, *a, **k)
+paramiko.SFTPClient.open = spy_open
+for mode in ("posix", "wings", "strict"):
+    FS.MODE = mode; open(os.path.join(ROOT, "server.properties"), "w").write(PROPS)
+    for f in list(os.listdir(ROOT)):
+        if f.startswith("server.properties.bak-2"): os.remove(os.path.join(ROOT, f))
+    before, ops[:] = snap(), []
+    assert deploy_sftp.deploy(good, SHA, f"blast-{mode}")
+    after = snap()
+    removed = set(before) - set(after); added = set(after) - set(before)
+    changed = {k for k in before if k in after and before[k] != after[k]}
+    assert not removed - {"server.properties.tmp"}, f"{mode}: deleted {removed}"
+    assert changed == {"server.properties"}, f"{mode}: modified {changed}"
+    assert len(added) == 1 and next(iter(added)).startswith("server.properties.bak-"), f"{mode}: added {added}"
+    assert all(after[c] == before[c] for c in CANARIES), f"{mode}: canary touched"
+    allowed = {"/server.properties", "/server.properties.tmp"}
+    for op, a in ops:
+        assert op in ("open-w", "posix_rename", "rename", "remove"), f"{mode}: unexpected op {op}{a}"
+        assert all(p in allowed or p.startswith("/server.properties.bak-") for p in a if isinstance(p, str)), f"{mode}: op outside scope {op}{a}"
+        if op == "remove": assert a == ("/server.properties",), f"{mode}: remove target {a}"
+    print(f"blast radius [{mode}]: {len(CANARIES)} canaries intact; ops = {[(o, a) for o, a in ops]}")
+print("BLAST RADIUS OK")
