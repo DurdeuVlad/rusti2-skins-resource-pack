@@ -9,12 +9,43 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - id: build
-        run: python3 build.py "${GITHUB_REF_NAME}" | tee build.txt
+        with:
+          fetch-depth: 0
+      - run: python3 build.py "${GITHUB_REF_NAME}" | tee build.txt
       - env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          TAG=$GITHUB_REF_NAME
           SHA=$(grep -o 'sha1=.*' build.txt | cut -d= -f2)
-          gh release create "$GITHUB_REF_NAME" dist/*.zip \
-            --title "$GITHUB_REF_NAME" \
-            --notes "resource-pack-sha1=$SHA"
+          URL=https://github.com/$GITHUB_REPOSITORY/releases
+          PREV=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
+          if [ -n "$PREV" ]; then RANGE="$PREV..$TAG"; else RANGE="$TAG"; fi
+          {
+            echo "## Changelog"
+            git log "$RANGE" --no-merges --pretty='- %s (%h)'
+            [ -n "$PREV" ] && echo && echo "Full diff: https://github.com/$GITHUB_REPOSITORY/compare/$PREV...$TAG"
+            cat <<NOTES
+
+          ## Install on the server
+          Edit these keys in the server's \`server.properties\` (they already exist, so replace the values, do not add duplicates), then **restart the server**:
+
+          \`\`\`properties
+          require-resource-pack=true
+          resource-pack=$URL/latest/download/Rusti_2_Skins_Resource_Pack.zip
+          resource-pack-id=7f3c1c6e-5b0a-4d8e-9a52-3e1d6b8f4a10
+          resource-pack-prompt={"text":"Rusti 2 NPC skins"}
+          resource-pack-sha1=$SHA
+          \`\`\`
+
+          - Only \`resource-pack-sha1\` changes between releases. Keep \`resource-pack-id\` fixed so clients replace the old pack.
+          - To pin this exact version, use \`resource-pack=$URL/download/$TAG/Rusti_2_Skins_Resource_Pack-$TAG.zip\`.
+          - Set \`require-resource-pack=false\` to make the pack optional.
+
+          ## Install locally (single player / modpack)
+          Download \`Rusti_2_Skins_Resource_Pack-$TAG.zip\` below, put it in \`resourcepacks/\`, enable it under Options → Resource Packs.
+
+          ---
+          resource-pack-sha1=$SHA
+          NOTES
+          } > notes.md
+          gh release create "$TAG" dist/*.zip --title "$TAG" --notes-file notes.md
